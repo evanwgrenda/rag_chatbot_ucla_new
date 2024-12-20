@@ -1,5 +1,6 @@
 import streamlit as st
 from openai import OpenAI
+from langchain.callbacks.tracers import LangChainTracer
 from datetime import datetime
 from template import PROMPT_TEMPLATE
 
@@ -8,6 +9,9 @@ api_key = st.secrets["OPENAI_API_KEY"]
 
 # Instantiate OpenAI client
 client = OpenAI(api_key=api_key)
+
+# Set up LangChain tracer
+tracer = LangChainTracer()
 
 # Configure Streamlit page
 st.set_page_config(
@@ -23,7 +27,7 @@ if "messages" not in st.session_state:
 # Function to get chatbot response
 def get_chatbot_response(user_input):
     try:
-        # Create a chat completion request
+        # Trace the interaction with LangChain tracer
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
@@ -75,3 +79,4 @@ for message in st.session_state.messages:
 # Footer
 st.markdown("---")
 st.markdown("*This is an AI assistant. For medical emergencies, please call 911 or contact the clinic directly.*")
+
