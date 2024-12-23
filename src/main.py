@@ -1,17 +1,30 @@
 import streamlit as st
 from openai import OpenAI
 from langchain.callbacks.tracers import LangChainTracer
+from langchain.callbacks.manager import CallbackManager
 from datetime import datetime
 from template import PROMPT_TEMPLATE
+import os
+from langchain.schema import LLMResult
+from uuid import uuid4
 
-# Get API key from Streamlit secrets
+# Get API keys from Streamlit secrets
 api_key = st.secrets["OPENAI_API_KEY"]
+langchain_api_key = st.secrets.get("LANGCHAIN_API_KEY")
+
+# Set up LangChain API key
+os.environ["LANGCHAIN_API_KEY"] = langchain_api_key
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_PROJECT"] = "UCLA_TESTING"
+
+# Initialize callback manager with tracer
+tracer = LangChainTracer(
+    project_name="ucla-post-op-care"
+)
+callback_manager = CallbackManager([tracer])
 
 # Instantiate OpenAI client
 client = OpenAI(api_key=api_key)
-
-# Set up LangChain tracer
-tracer = LangChainTracer()
 
 # Configure Streamlit page
 st.set_page_config(
@@ -26,8 +39,16 @@ if "messages" not in st.session_state:
 
 # Function to get chatbot response
 def get_chatbot_response(user_input):
+    # Generate run_id outside try block
+    run_id = str(uuid4())
+    
+    tracer.on_llm_start(
+        serialized={},
+        prompts=[user_input],
+        run_id=run_id
+    )
+    
     try:
-        # Trace the interaction with LangChain tracer
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
@@ -37,8 +58,26 @@ def get_chatbot_response(user_input):
             temperature=0.7,
             max_tokens=500
         )
-        return response.choices[0].message.content
+        
+        assistant_response = response.choices[0].message.content
+        
+        # Log successful completion
+        tracer.on_llm_end(
+            response=LLMResult(
+                generations=[[{"text": assistant_response}]],
+                llm_output={"model": "gpt-4"}
+            ),
+            run_id=run_id
+        )
+        
+        return assistant_response
+            
     except Exception as e:
+        # Log error if it occurs
+        tracer.on_llm_error(
+            error=str(e),
+            run_id=run_id
+        )
         return f"Error: {str(e)}"
 
 # Streamlit UI
@@ -79,4 +118,3 @@ for message in st.session_state.messages:
 # Footer
 st.markdown("---")
 st.markdown("*This is an AI assistant. For medical emergencies, please call 911 or contact the clinic directly.*")
-
